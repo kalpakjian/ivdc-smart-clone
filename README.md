@@ -33,6 +33,25 @@
 4. 儲存 → 選 `startSmartClone` → 執行 → 完成 OAuth 授權
 
 ### 方式二：clasp 命令列部署
+### 雲端比對驗證（可選）
+
+備份完成後，用 `tools/compare_check.js` 一鍵驗證「老師的資料夾」與「自己的備份」是否一致（唯讀、不動任何檔案）：
+
+```bash
+# 需先 clasp login（工具直接使用其 OAuth 憑證呼叫 Drive API）
+node tools/compare_check.js
+
+# 可用環境變數切換要比對的資料夾：
+SOURCE_FOLDER_ID=<來源ID> TARGET_FOLDER_NAME="我的備份" node tools/compare_check.js
+```
+
+輸出包含兩邊檔案／資料夾數、缺少／多餘／大小不一致清單，最後一行：
+- `RESULT: PERFECT_MATCH 完全一致` — 備份完整 ✅
+- `RESULT: DIFFERENCES_FOUND 有差異，同步尚未完成` — 重跑同步腳本後再驗證
+
+Apps Script 端也有內建的 `verifyCNNBackup` 函式（在編輯器選該函式執行，結果印在執行記錄）。
+
+## ⚠️ 注意事項
 
 ```bash
 npm install -g @google/clasp
