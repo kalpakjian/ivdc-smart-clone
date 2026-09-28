@@ -1,0 +1,10 @@
+# clasp 本機專案設定（含個人 script ID，不上傳）
+.clasp.json
+
+# 本機憑證
+.clasprc.json
+
+# 系統 / 編輯器雜項
+.DS_Store
+Thumbs.db
+*.log
