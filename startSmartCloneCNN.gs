@@ -62,6 +62,148 @@ function cleanupAutoRetry() {
   }
 }
 
+// ============================================================
+// 備份比對工具：verifyCNNBackup
+// 在編輯器函式選單選 verifyCNNBackup 按「執行」，
+// 逐一比對老師的 CNN 資料夾與你自己的「CNN課程備份」：
+// 資料夾結構、檔名清單、檔案數量、檔案大小。
+// 結果顯示在下方執行記錄。唯讀、不修改任何檔案，可重複執行。
+// ============================================================
+
+function verifyCNNBackup() {
+  var sourceFolderId = "13IA9Ad_sqJrTVXoNdMowTQh09Ds9ASVV";
+  var targetName = "CNN課程備份";
+
+  var sourceFolder = DriveApp.getFolderById(sourceFolderId);
+
+  // 找目的地資料夾（與 startSmartCloneCNN 相同邏輯）
+  var targetFolder = null;
+  var rootFolders = DriveApp.getRootFolder().getFolders();
+  while (rootFolders.hasNext()) {
+    var f = rootFolders.next();
+    if (f.getName() === targetName) {
+      targetFolder = f;
+      break;
+    }
+  }
+  if (targetFolder === null) {
+    Logger.log("❌ 找不到目的地資料夾「" + targetName + "」，請先執行 startSmartCloneCNN 完成備份。");
+    return;
+  }
+
+  var report = {
+    foldersChecked: 0,
+    filesMatched: 0,
+    missingFiles: [],    // 來源有、備份缺
+    extraFiles: [],      // 備份多出來的
+    sizeMismatch: [],    // 同名但大小不同
+    missingFolders: [],
+    extraFolders: [],
+    issueCount: 0,
+    maxIssues: 100       // 每類最多列出 100 筆，避免執行記錄過長
+  };
+
+  Logger.log("🔍 開始比對：「" + sourceFolder.getName() + "」 vs 「" + targetName + "」");
+  compareFolderCNN(sourceFolder, targetFolder, "", report);
+
+  // ---- 印出比對結果 ----
+  Logger.log("");
+  Logger.log("========== 📊 比對結果 ==========");
+  Logger.log("📁 檢查資料夾數: " + report.foldersChecked);
+  Logger.log("📄 完全一致的檔案數: " + report.filesMatched);
+  verifyPrintIssues("備份缺少的檔案（來源有、備份沒有）", report.missingFiles);
+  verifyPrintIssues("備份多出來的檔案（來源沒有）", report.extraFiles);
+  verifyPrintIssues("大小不一致的檔案（同名但 bytes 不同）", report.sizeMismatch);
+  verifyPrintIssues("備份缺少的資料夾", report.missingFolders);
+  verifyPrintIssues("備份多出來的資料夾", report.extraFolders);
+
+  if (report.issueCount === 0) {
+    Logger.log("🎉 結論：完全一致！老師的資料夾與你的備份內容相同。");
+  } else {
+    Logger.log("⚠️ 結論：共發現 " + report.issueCount + " 個差異（每類最多列出 " + report.maxIssues + " 筆）。");
+    Logger.log("👉 建議：先執行 startSmartCloneCNN 補齊，再跑一次 verifyCNNBackup 確認歸零。");
+  }
+}
+
+function compareFolderCNN(source, target, path, report) {
+  report.foldersChecked++;
+
+  // --- 檔案比對：檔名 + 大小 ---
+  var sourceFiles = {}; // 檔名 -> 大小(bytes)
+  var it = source.getFiles();
+  while (it.hasNext()) {
+    var sf = it.next();
+    sourceFiles[sf.getName()] = sf.getSize();
+  }
+  var targetFiles = {};
+  it = target.getFiles();
+  while (it.hasNext()) {
+    var tf = it.next();
+    targetFiles[tf.getName()] = tf.getSize();
+  }
+
+  for (var name in sourceFiles) {
+    if (!(name in targetFiles)) {
+      verifyAddIssue(report, report.missingFiles, path + name);
+    } else if (sourceFiles[name] !== targetFiles[name]) {
+      verifyAddIssue(report, report.sizeMismatch,
+        path + name + "（來源 " + sourceFiles[name] + " bytes / 備份 " + targetFiles[name] + " bytes）");
+    } else {
+      report.filesMatched++;
+    }
+  }
+  for (var name2 in targetFiles) {
+    if (!(name2 in sourceFiles)) {
+      verifyAddIssue(report, report.extraFiles, path + name2);
+    }
+  }
+
+  // --- 資料夾比對：遞迴往下 ---
+  var sourceFolders = {};
+  it = source.getFolders();
+  while (it.hasNext()) {
+    var sd = it.next();
+    sourceFolders[sd.getName()] = sd;
+  }
+  var targetFolders = {};
+  it = target.getFolders();
+  while (it.hasNext()) {
+    var td = it.next();
+    targetFolders[td.getName()] = td;
+  }
+
+  for (var dName in sourceFolders) {
+    if (!(dName in targetFolders)) {
+      verifyAddIssue(report, report.missingFolders, path + dName + "/");
+    } else {
+      compareFolderCNN(sourceFolders[dName], targetFolders[dName], path + dName + "/", report);
+    }
+  }
+  for (var dName2 in targetFolders) {
+    if (!(dName2 in sourceFolders)) {
+      verifyAddIssue(report, report.extraFolders, path + dName2 + "/");
+    }
+  }
+}
+
+function verifyAddIssue(report, list, text) {
+  report.issueCount++;
+  if (list.length < report.maxIssues) {
+    list.push(text);
+  }
+}
+
+function verifyPrintIssues(title, list) {
+  if (list.length === 0) {
+    Logger.log("✅ " + title + "：0 筆");
+  } else {
+    Logger.log("⚠️ " + title + "：" + list.length + " 筆");
+    for (var i = 0; i < list.length; i++) {
+      Logger.log("   - " + list[i]);
+    }
+  }
+}
+
 function copyFolderSmart(source, target) {
   // --- 1. 處理檔案複製（防重複，且會自動取代「已更新」的同名舊檔）---
   // 先把目的地資料夾裡「檔名 -> 檔案物件」建成索引，方便之後比對
